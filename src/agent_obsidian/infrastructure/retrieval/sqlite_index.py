@@ -5,7 +5,6 @@ import json
 import sqlite3
 from pathlib import Path
 from typing import Any
-
 from pathlib import PurePosixPath
 from agent_obsidian.infrastructure.retrieval.note_parser import ParsedNote
 
@@ -18,7 +17,7 @@ SEARCH_STOPWORDS = {
     "can", "could", "would", "should",
     "of", "to", "in", "on", "for", "with", "about",
     "and", "or", "but",
-    "explain", "describe", "tell", "me",
+    "explain", "describe", "tell", "me","function"
 
     # Indonesian
     "apa", "apakah", "siapa", "kapan", "dimana",
@@ -26,7 +25,10 @@ SEARCH_STOPWORDS = {
     "adalah", "ialah", "yang", "dan", "atau",
     "di", "ke", "dari", "pada", "untuk", "dengan",
     "tentang", "ini", "itu", "saya", "tolong",
-    "jelaskan", "bisakah",
+    "jelaskan", "bisakah", "fungsi","kegunaan","dalam"
+
+    # Obsidian domain context
+    "vault", "obsidian", "vault", "obsidian",
 }
 
 SCHEMA = """
@@ -115,7 +117,6 @@ class SQLiteIndex:
 
     def __enter__(self):
         return self
-
 
     def __exit__(
         self,
@@ -288,7 +289,7 @@ class SQLiteIndex:
             "SELECT COUNT(*) AS total FROM notes"
         ).fetchone()
         return row["total"]
-
+    
     def search(
         self,
         query: str,
@@ -317,10 +318,10 @@ class SQLiteIndex:
         if not terms:
             terms = raw_terms
 
-        fts_query = " AND ".join(
+        quoted_terms = [
             '"' + term.replace('"', '""') + '"'
             for term in terms
-        )
+        ]
 
         sql = """
             SELECT
@@ -337,34 +338,54 @@ class SQLiteIndex:
             WHERE notes_fts MATCH ?
         """
 
-        parameters: list = [fts_query]
+        parameters: list = []
 
         if notes_prefix:
             sql += " AND n.path LIKE ?"
-            parameters.append(notes_prefix.rstrip("/") + "/%")
+            parameters.append(
+                notes_prefix.rstrip("/") + "/%"
+            )
 
         sql += " ORDER BY rank LIMIT ?"
-        parameters.append(limit)
 
-        rows = self.connection.execute(
-            sql,
-            parameters,
-        ).fetchall()
+        def execute_search(fts_query: str) -> list[dict]:
+            search_parameters = [fts_query, *parameters, limit]
 
-        return [
-            {
-                "path": row["path"],
-                "title": row["title"],
-                "type": row["note_type"],
-                "status": row["status"],
-                "tags": json.loads(row["tags_json"]),
-                "mtime": row["mtime"],
-                "excerpt": row["excerpt"],
-                "score": row["rank"],
-            }
-            for row in rows
-        ]
+            rows = self.connection.execute(
+                sql,
+                search_parameters,
+            ).fetchall()
 
+            return [
+                {
+                    "path": row["path"],
+                    "title": row["title"],
+                    "type": row["note_type"],
+                    "status": row["status"],
+                    "tags": json.loads(row["tags_json"]),
+                    "mtime": row["mtime"],
+                    "excerpt": row["excerpt"],
+                    "score": row["rank"],
+                }
+                for row in rows
+            ]
+
+        # First pass: strict matching.
+        and_query = " AND ".join(quoted_terms)
+        results = execute_search(and_query)
+
+        if results:
+            return results
+
+        # Second pass: relaxed matching.
+        # Only run when strict matching finds no results.
+        if len(quoted_terms) > 1:
+            or_query = " OR ".join(quoted_terms)
+            return execute_search(or_query)
+
+        return []
+
+    
     def get_note(self, path: str) -> dict | None:
         row = self.connection.execute(
             "SELECT * FROM notes WHERE path = ?",

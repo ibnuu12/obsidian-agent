@@ -40,7 +40,7 @@ monthly_budget_usd = 3.5
     assert settings.max_output_tokens == 1200
     assert settings.llm_temperature == 0.5
     assert settings.llm_monthly_budget_usd == 3.5
-
+    assert settings.llm_base_url == "http://127.0.0.1:11434"
 
 def test_environment_overrides_toml_provider(
     tmp_path,
@@ -106,5 +106,84 @@ def test_validation_rejects_invalid_temperature():
 
     assert any(
         "temperature" in error.lower()
+        for error in errors
+    )
+
+def test_environment_overrides_toml_base_url(
+    tmp_path,
+    monkeypatch,
+):
+    config_file = tmp_path / "settings.toml"
+    config_file.write_text(
+        """
+[llm]
+provider = "ollama"
+model = "qwen2.5:3b"
+base_url = "http://127.0.0.1:11434"
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv(
+        "LLM_BASE_URL",
+        "http://localhost:11434/",
+    )
+
+    settings = load_settings(config_file)
+
+    assert settings.llm_base_url == "http://localhost:11434"
+
+
+def test_validation_accepts_ollama_localhost():
+    settings = load_settings()
+
+    ollama_settings = replace(
+        settings,
+        llm_provider="ollama",
+        llm_model="qwen2.5:3b",
+        llm_base_url="http://127.0.0.1:11434",
+    )
+
+    errors = validate_settings(ollama_settings)
+
+    assert not any(
+        "Unsupported LLM provider" in error
+        or "Ollama base URL" in error
+        or "LLM model must be configured" in error
+        for error in errors
+    )
+
+
+def test_validation_rejects_remote_ollama_url():
+    settings = load_settings()
+
+    invalid_settings = replace(
+        settings,
+        llm_provider="ollama",
+        llm_model="qwen2.5:3b",
+        llm_base_url="http://192.168.1.10:11434",
+    )
+
+    errors = validate_settings(invalid_settings)
+
+    assert any(
+        "Ollama base URL" in error
+        for error in errors
+    )
+
+
+def test_validation_requires_ollama_model():
+    settings = load_settings()
+
+    invalid_settings = replace(
+        settings,
+        llm_provider="ollama",
+        llm_model="",
+    )
+
+    errors = validate_settings(invalid_settings)
+
+    assert any(
+        "LLM model must be configured" in error
         for error in errors
     )

@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -5,6 +6,9 @@ from typing import TYPE_CHECKING
 from agent_obsidian.application.llm.provider import LLMProvider
 from agent_obsidian.infrastructure.llm.mock_provider import (
     MockLLMProvider,
+)
+from agent_obsidian.infrastructure.llm.ollama_provider import (
+    OllamaLLMProvider,
 )
 
 if TYPE_CHECKING:
@@ -28,6 +32,13 @@ def create_llm_provider(
     if provider_name == "mock":
         return MockLLMProvider(
             model_name=settings.llm_model or "mock-model",
+        )
+
+    if provider_name == "ollama":
+        return OllamaLLMProvider(
+            base_url=settings.llm_base_url,
+            model_name=settings.llm_model,
+            timeout=settings.llm_timeout_seconds,
         )
 
     raise ValueError(

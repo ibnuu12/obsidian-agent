@@ -19,6 +19,7 @@ allow_bulk_operations = false
 [llm]
 provider = "none"
 model = ""
+base_url = "http://127.0.0.1:11434"
 timeout_seconds = 30
 max_output_tokens = 1024
 temperature = 0.2

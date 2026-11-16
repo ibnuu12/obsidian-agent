@@ -45,6 +45,25 @@ provide enough information to answer confidently.
 
 When appropriate, distinguish information supported by the notes
 from your own general explanation.
+
+RETRIEVAL INTERPRETATION RULES:
+
+- Treat retrieved notes as the primary source of factual information.
+- Retrieval metadata such as "source", "score", and retrieval ranking
+  are internal system metadata, not content written by the note author.
+- Never interpret retrieval source labels such as "fts" or "graph"
+  as part of the note's meaning.
+- Do not explain internal retrieval metadata unless explicitly asked.
+- Use YAML metadata such as tags, aliases, and note type only when
+  relevant to the user's question.
+- Prioritize answering the user's actual question over listing
+  retrieved notes or their metadata.
+- Do not invent information that is not supported by retrieved notes.
+- If multiple notes describe different domains, explain their
+  distinctions clearly.
+- Respond in the same language as the user's question.
+- Use clean Markdown formatting without escaped Markdown characters
+  or HTML entities.
 """
 
 

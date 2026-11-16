@@ -43,7 +43,7 @@ class Settings:
     llm_timeout_seconds: int = 30
     llm_temperature: float = 0.2
     llm_monthly_budget_usd: float = 5.0
-
+    llm_base_url: str = "http://127.0.0.1:11434"
 
 def _resolve_path(root: Path, value: str) -> Path:
     path = Path(value).expanduser()
@@ -154,9 +154,15 @@ def load_settings(config_path: Path | None = None) -> Settings:
             llm.get("temperature", 0.2)
         ),
         llm_monthly_budget_usd=float(
-            llm.get("monthly_budget_usd", 5.0)
+            llm.get("monthly_budget_usd", 5.0),
         ),
-
+        llm_base_url=(
+            os.getenv("LLM_BASE_URL")
+            or llm.get(
+                "base_url",
+                "http://127.0.0.1:11434",
+            )
+        ).strip().rstrip("/"),
         max_output_tokens=int(
             llm.get("max_output_tokens", 1024)
         ),
@@ -232,7 +238,7 @@ def validate_settings(settings: Settings) -> list[str]:
         )
 
     # LLM configuration validation
-    supported_providers = {"none", "mock"}
+    supported_providers = {"none", "mock", "ollama"}
 
     if settings.llm_provider not in supported_providers:
         errors.append(
@@ -261,5 +267,31 @@ def validate_settings(settings: Settings) -> list[str]:
         errors.append(
             "LLM monthly budget cannot be negative"
         )
+
+    if settings.llm_provider == "ollama":
+        if not settings.llm_model.strip():
+            errors.append(
+                "LLM model must be configured when provider is ollama"
+            )
+
+        parsed = urlparse(settings.llm_base_url)
+
+        if (
+            parsed.scheme not in {"http", "https"}
+            or parsed.hostname not in {
+                "127.0.0.1",
+                "localhost",
+                "::1",
+            }
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            errors.append(
+                "Ollama base URL must use HTTP/HTTPS "
+                "and point to localhost"
+            )
 
     return errors
