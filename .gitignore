@@ -1,0 +1,115 @@
+# ==========================================
+# Secrets and credentials
+# ==========================================
+
+.env
+.env.*
+!.env.example
+!.env.template
+
+*.crt
+*.pem
+*.key
+*.p12
+*.pfx
+*.p7b
+*.p7c
+*.jks
+*.keystore
+
+secrets/
+credentials/
+**/secrets/
+**/credentials/
+
+id_rsa
+id_ed25519
+id_ecdsa
+id_dsa
+
+# ==========================================
+# Python environment and cache
+# ==========================================
+
+.venv/
+venv/
+env/
+ENV/
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+
+# ==========================================
+# Local databases and runtime data
+# ==========================================
+
+data/index/
+data/logs/
+
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+
+*.log
+logs/
+
+# ==========================================
+# Local configuration
+# ==========================================
+
+# Personal application configuration
+config/settings.toml
+
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+*.local.toml
+*.local.yaml
+*.local.yml
+*.local.json
+
+# ==========================================
+# Build and distribution
+# ==========================================
+
+build/
+dist/
+wheelhouse/
+pip-wheel-metadata/
+
+.coverage
+.coverage.*
+htmlcov/
+
+# ==========================================
+# IDE and editor
+# ==========================================
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ==========================================
+# Operating system
+# ==========================================
+
+Thumbs.db
+.DS_Store
+desktop.ini

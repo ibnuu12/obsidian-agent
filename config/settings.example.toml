@@ -1,0 +1,34 @@
+[app]
+name = "Agent Obsidian"
+environment = "development"
+log_level = "INFO"
+
+[obsidian]
+vault_path = "C:\\Path\\To\\Your\\Obsidian\\Vault"
+api_url = "https://127.0.0.1:27124"
+mcp_endpoint = "https://127.0.0.1:27124/mcp/"
+ca_cert = "obsidian-local-rest-api.crt"
+request_timeout = 30
+
+[security]
+read_only = true
+require_write_approval = true
+allow_delete = false
+allow_bulk_operations = false
+
+[llm]
+provider = "none"
+model = ""
+timeout_seconds = 30
+max_output_tokens = 1024
+temperature = 0.2
+monthly_budget_usd = 5.0
+
+[retrieval]
+backend = "sqlite_fts5"
+database_path = "data/index/agent.db"
+max_results = 10
+
+[audit]
+enabled = true
+log_path = "data/logs/agent.log"

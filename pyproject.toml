@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-obsidian"
+version = "0.1.0"
+description = "Local-first AI agent for Obsidian"
+requires-python = ">=3.14"
+dependencies = [
+    "mcp[cli]",
+    "python-dotenv>=1.0",
+    "PyYAML>=6.0.2"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0"
+]
+
+[project.scripts]
+agent = "agent_obsidian.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
