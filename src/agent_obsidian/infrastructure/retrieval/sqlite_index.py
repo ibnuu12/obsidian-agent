@@ -350,7 +350,6 @@ class SQLiteIndex:
 
         def execute_search(fts_query: str) -> list[dict]:
             search_parameters = [fts_query, *parameters, limit]
-
             rows = self.connection.execute(
                 sql,
                 search_parameters,
@@ -385,7 +384,6 @@ class SQLiteIndex:
 
         return []
 
-    
     def get_note(self, path: str) -> dict | None:
         row = self.connection.execute(
             "SELECT * FROM notes WHERE path = ?",
