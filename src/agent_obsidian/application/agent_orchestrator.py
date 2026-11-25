@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 
+from agent_obsidian.observability import PerformanceCollector
+
 from agent_obsidian.application.agent_models import (
     AgentRequest,
     AgentResponse,
@@ -145,102 +147,137 @@ class AgentOrchestrator:
                 "Configure a provider before running the agent."
             )
 
-        options = self._resolve_retrieval_options(
-            request.retrieval,
-            self.settings.max_results,
-        )
+        collector = PerformanceCollector()
 
-        notes = self.retrieval_service.retrieve(
-            query=request.query,
-            limit=options.limit,
-            note_types=(
-                set(options.note_types)
-                if options.note_types is not None
-                else None
-            ),
-            statuses=(
-                set(options.statuses)
-                if options.statuses is not None
-                else None
-            ),
-            tags=(
-                set(options.tags)
-                if options.tags is not None
-                else None
-            ),
-            expand_graph=options.expand_graph,
-            graph_limit=options.graph_limit,
-        )
-
-        user_prefix = (
-            f"User question:\n{request.query}\n\n"
-            "Retrieved context from the Obsidian vault:\n"
-        )
-
-        reserved_tokens = (
-            estimate_tokens(SYSTEM_PROMPT)
-            + estimate_tokens(user_prefix)
-        )
-
-        context_budget = (
-            self.settings.max_context_tokens - reserved_tokens
-        )
-
-        if context_budget < 1:
-            raise ValueError(
-                "max_context_tokens is insufficient for the "
-                "system prompt and user query."
+        with collector.measure("total"):
+            options = self._resolve_retrieval_options(
+                request.retrieval,
+                self.settings.max_results,
             )
 
-        context_result = self.context_builder.build(
-            notes=notes,
-            max_tokens=context_budget,
-        )
+            # Stage 1: Retrieval
+            with collector.measure("retrieval"):
+                notes = self.retrieval_service.retrieve(
+                    query=request.query,
+                    limit=options.limit,
+                    note_types=(
+                        set(options.note_types)
+                        if options.note_types is not None
+                        else None
+                    ),
+                    statuses=(
+                        set(options.statuses)
+                        if options.statuses is not None
+                        else None
+                    ),
+                    tags=(
+                        set(options.tags)
+                        if options.tags is not None
+                        else None
+                    ),
+                    expand_graph=options.expand_graph,
+                    graph_limit=options.graph_limit,
+                )
 
-        user_message = self._build_user_message(
-            query=request.query,
-            context=context_result.context,
-        )
+            collector.record_count("retrieved_notes", len(notes))
 
-        llm_request = LLMRequest(
-            messages=(
-                LLMMessage(
-                    role="system",
-                    content=SYSTEM_PROMPT,
-                ),
-                LLMMessage(
-                    role="user",
-                    content=user_message,
-                ),
-            ),
-            temperature=self.settings.llm_temperature,
-            max_output_tokens=self.settings.max_output_tokens,
-        )
-
-        try:
-            async with asyncio.timeout(
-                self.settings.llm_timeout_seconds
-            ):
-                response = await self.provider.generate(llm_request)
-        except TimeoutError as exc:
-            raise LLMTimeoutError(
-                "LLM generation exceeded the configured timeout."
-            ) from exc
-
-        if not isinstance(response, LLMResponse):
-            raise LLMInvalidResponseError(
-                "Provider returned an invalid response object."
+            # Stage 2: Context budget and construction
+            user_prefix = (
+                f"User question:\n{request.query}\n\n"
+                "Retrieved context from the Obsidian vault:\n"
             )
 
-        if not response.content.strip():
-            raise LLMInvalidResponseError(
-                "Provider returned an empty response."
+            reserved_tokens = (
+                estimate_tokens(SYSTEM_PROMPT)
+                + estimate_tokens(user_prefix)
             )
 
+            context_budget = (
+                self.settings.max_context_tokens - reserved_tokens
+            )
+
+            if context_budget < 1:
+                raise ValueError(
+                    "max_context_tokens is insufficient for the "
+                    "system prompt and user query."
+                )
+
+            with collector.measure("context_build"):
+                context_result = self.context_builder.build(
+                    notes=notes,
+                    max_tokens=context_budget,
+                )
+
+            collector.record_count(
+                "context_items",
+                len(context_result.items),
+            )
+            collector.record_count(
+                "estimated_context_tokens",
+                estimate_tokens(context_result.context),
+            )
+
+            # Stage 3: Prompt construction
+            with collector.measure("prompt_build"):
+                user_message = self._build_user_message(
+                    query=request.query,
+                    context=context_result.context,
+                )
+
+                llm_request = LLMRequest(
+                    messages=(
+                        LLMMessage(
+                            role="system",
+                            content=SYSTEM_PROMPT,
+                        ),
+                        LLMMessage(
+                            role="user",
+                            content=user_message,
+                        ),
+                    ),
+                    temperature=self.settings.llm_temperature,
+                    max_output_tokens=self.settings.max_output_tokens,
+                )
+
+                estimated_prompt_tokens = (
+                    estimate_tokens(SYSTEM_PROMPT)
+                    + estimate_tokens(user_message)
+                )
+
+                collector.record_count(
+                    "estimated_prompt_tokens",
+                    estimated_prompt_tokens,
+                )
+
+            # Stage 4: LLM inference
+            try:
+                with collector.measure("llm_inference"):
+                    async with asyncio.timeout(
+                        self.settings.llm_timeout_seconds
+                    ):
+                        response = await self.provider.generate(llm_request)
+            except TimeoutError as exc:
+                raise LLMTimeoutError(
+                    "LLM generation exceeded the configured timeout."
+                ) from exc
+
+            if not isinstance(response, LLMResponse):
+                raise LLMInvalidResponseError(
+                    "Provider returned an invalid response object."
+                )
+
+            if not response.content.strip():
+                raise LLMInvalidResponseError(
+                    "Provider returned an empty response."
+                )
+
+        # The total measurement has completed before taking the snapshot.
         return AgentResponse(
             answer=response.content,
             sources=context_result.items,
             usage=response.usage,
             provider=response.provider,
             model=response.model,
+            performance=collector.snapshot(),
+            llm_runtime_metrics=response.runtime_metrics,
         )

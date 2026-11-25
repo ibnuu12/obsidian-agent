@@ -14,9 +14,9 @@ from agent_obsidian.application.llm.exceptions import (
 from agent_obsidian.application.llm.models import (
     LLMRequest,
     LLMResponse,
+    LLMRuntimeMetrics,
     LLMUsage,
 )
-
 
 class OllamaLLMProvider:
     """Local Ollama implementation of the LLMProvider contract."""
@@ -166,9 +166,10 @@ class OllamaLLMProvider:
                 output_tokens=output_tokens,
                 total_tokens=total_tokens,
             )
+            runtime_metrics = self._read_diagnostics(data, output_tokens)
         except (TypeError, ValueError) as exc:
             raise LLMInvalidResponseError(
-                "Ollama returned invalid token usage"
+                "Ollama returned invalid usage or runtime metrics"
             ) from exc
 
         return LLMResponse(
@@ -177,6 +178,69 @@ class OllamaLLMProvider:
             model=model,
             finish_reason=finish_reason,
             usage=usage,
+            runtime_metrics=runtime_metrics
+        )
+
+    @staticmethod
+    def _read_duration_ns(
+        data: dict[str, Any],
+        key: str,
+    ) -> int | None:
+        value = data.get(key)
+
+        if value is None:
+            return None
+
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+        ):
+            raise LLMInvalidResponseError(
+                f"Ollama returned invalid {key}"
+            )
+
+        return value
+
+    @classmethod
+    def _read_diagnostics(
+        cls,
+        data: dict[str, Any],
+        output_tokens: int | None,
+    ) -> LLMRuntimeMetrics:
+        total_ns = cls._read_duration_ns(data, "total_duration")
+        load_ns = cls._read_duration_ns(data, "load_duration")
+        prompt_ns = cls._read_duration_ns(
+            data,
+            "prompt_eval_duration",
+        )
+        eval_ns = cls._read_duration_ns(data, "eval_duration")
+
+        tokens_per_second = None
+
+        if (
+            output_tokens is not None
+            and eval_ns is not None
+            and eval_ns > 0
+        ):
+            tokens_per_second = output_tokens / (
+                eval_ns / 1_000_000_000
+            )
+
+        return LLMRuntimeMetrics(
+            total_duration_ms=(
+                total_ns / 1_000_000 if total_ns is not None else None
+            ),
+            load_duration_ms=(
+                load_ns / 1_000_000 if load_ns is not None else None
+            ),
+            prompt_eval_duration_ms=(
+                prompt_ns / 1_000_000 if prompt_ns is not None else None
+            ),
+            eval_duration_ms=(
+                eval_ns / 1_000_000 if eval_ns is not None else None
+            ),
+            tokens_per_second=tokens_per_second,
         )
 
     @staticmethod

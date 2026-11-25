@@ -4,8 +4,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agent_obsidian.application.context_models import ContextItem
-from agent_obsidian.application.llm.models import LLMUsage
+from agent_obsidian.application.llm.models import (
+    LLMRuntimeMetrics,
+    LLMUsage,
+)
 
+from agent_obsidian.observability.models import PerformanceMetrics
 
 @dataclass(frozen=True, slots=True)
 class RetrievalOptions:
@@ -95,6 +99,8 @@ class AgentResponse:
     usage: LLMUsage | None
     provider: str
     model: str
+    performance: PerformanceMetrics | None = None
+    llm_runtime_metrics: LLMRuntimeMetrics | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.answer, str):
@@ -123,3 +129,20 @@ class AgentResponse:
 
         if not isinstance(self.model, str) or not self.model.strip():
             raise ValueError("model cannot be empty")
+
+        if self.performance is not None and not isinstance(
+            self.performance,
+            PerformanceMetrics,
+        ):
+            raise TypeError(
+                "performance must be a PerformanceMetrics instance or None"
+            )
+
+        if self.llm_runtime_metrics is not None and not isinstance(
+            self.llm_runtime_metrics,
+            LLMRuntimeMetrics,
+        ):
+            raise TypeError(
+                "llm_runtime_metrics must be an "
+                "LLMRuntimeMetrics instance or None"
+            )

@@ -23,7 +23,9 @@ from agent_obsidian.application.llm.exceptions import (
     LLMTimeoutError,
 )
 from agent_obsidian.application.llm.models import (
+    LLMRequest,
     LLMResponse,
+    LLMRuntimeMetrics,
     LLMUsage,
 )
 from agent_obsidian.infrastructure.llm.mock_provider import (
@@ -338,12 +340,19 @@ def test_agent_orchestrator_rejects_insufficient_context_budget():
             )
         )
 
-
 def test_agent_orchestrator_preserves_response_metadata():
     usage = LLMUsage(
         input_tokens=80,
         output_tokens=30,
         total_tokens=110,
+    )
+
+    runtime_metrics = LLMRuntimeMetrics(
+        total_duration_ms=1500.0,
+        load_duration_ms=100.0,
+        prompt_eval_duration_ms=300.0,
+        eval_duration_ms=1100.0,
+        tokens_per_second=27.27,
     )
 
     provider = FakeProvider(
@@ -352,6 +361,7 @@ def test_agent_orchestrator_preserves_response_metadata():
             provider="test-provider",
             model="test-model",
             usage=usage,
+            runtime_metrics=runtime_metrics,
         )
     )
 
@@ -370,6 +380,7 @@ def test_agent_orchestrator_preserves_response_metadata():
     assert response.provider == "test-provider"
     assert response.model == "test-model"
     assert response.usage == usage
+    assert response.llm_runtime_metrics == runtime_metrics
     assert response.sources[0].path == (
         "30 Notes/Knowledge Graph.md"
     )
@@ -415,3 +426,48 @@ def test_agent_orchestrator_keeps_note_instructions_as_reference_data():
     assert response.sources[0].path == (
         "30 Notes/Knowledge Graph.md"
     )
+
+def test_agent_orchestrator_records_performance_metrics():
+    provider = MockLLMProvider()
+    notes = [make_note()]
+
+    orchestrator, _, _ = make_orchestrator(
+        provider=provider,
+        notes=notes,
+    )
+
+    response = asyncio.run(
+        orchestrator.run(
+            AgentRequest(query="What is a knowledge graph?")
+        )
+    )
+
+    metrics = response.performance
+
+    assert metrics is not None
+
+    # Duration metrics
+    assert metrics.retrieval_ms >= 0
+    assert metrics.context_build_ms >= 0
+    assert metrics.prompt_build_ms >= 0
+    assert metrics.llm_inference_ms >= 0
+    assert metrics.total_ms > 0
+
+    # Retrieval and context counters
+    assert metrics.retrieved_notes == 1
+    assert metrics.context_items == len(response.sources)
+    assert metrics.context_items == 1
+
+    # Token estimates
+    assert metrics.estimated_context_tokens > 0
+    assert metrics.estimated_prompt_tokens > 0
+
+    # Total duration must cover all measured stages.
+    measured_stages = (
+        metrics.retrieval_ms
+        + metrics.context_build_ms
+        + metrics.prompt_build_ms
+        + metrics.llm_inference_ms
+    )
+
+    assert metrics.total_ms >= measured_stages

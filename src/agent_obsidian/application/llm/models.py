@@ -26,7 +26,6 @@ class LLMMessage:
         if not self.content.strip():
             raise ValueError("Message content cannot be empty")
 
-
 @dataclass(frozen=True, slots=True)
 class LLMRequest:
     messages: tuple[LLMMessage, ...]
@@ -98,6 +97,36 @@ class LLMUsage:
                     f"{field_name} must be a non-negative integer"
                 )
 
+@dataclass(frozen=True, slots=True)
+class LLMRuntimeMetrics:
+    total_duration_ms: float | None = None
+    load_duration_ms: float | None = None
+    prompt_eval_duration_ms: float | None = None
+    eval_duration_ms: float | None = None
+    tokens_per_second: float | None = None
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "total_duration_ms",
+            "load_duration_ms",
+            "prompt_eval_duration_ms",
+            "eval_duration_ms",
+            "tokens_per_second",
+        ):
+            value = getattr(self, field_name)
+
+            if value is None:
+                continue
+
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+            ):
+                raise ValueError(
+                    f"{field_name} must be a finite non-negative number"
+                )
 
 @dataclass(frozen=True, slots=True)
 class LLMResponse:
@@ -106,6 +135,7 @@ class LLMResponse:
     model: str
     finish_reason: str | None = None
     usage: LLMUsage = field(default_factory=LLMUsage)
+    runtime_metrics: LLMRuntimeMetrics | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.content, str):
@@ -125,3 +155,11 @@ class LLMResponse:
 
         if not isinstance(self.usage, LLMUsage):
             raise TypeError("usage must be an LLMUsage instance")
+
+        if (
+            self.runtime_metrics is not None
+            and not isinstance(self.runtime_metrics, LLMRuntimeMetrics)
+        ):
+            raise TypeError(
+                "runtime_metrics must be an LLMRuntimeMetrics instance or None"
+            )
